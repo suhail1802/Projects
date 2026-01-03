@@ -1,0 +1,154 @@
+# Projects
+________________________________________________________________________________________________________________________________-
+1.SMART PARKING:
+#include "mbed.h"
+
+// ---- Hardware Declarations ----
+DigitalIn IR1(PC_0);      // IR Sensor 1 (Entrance)
+DigitalIn IR2(PC_1);      // IR Sensor 2 (Exit)
+PwmOut servo(PB_0);       // Servo Motor control pin
+DigitalOut buzzer(PC_6);  // Buzzer for "Parking Full"
+
+// 7-Segment Display pins (Common Anode or Cathode based)
+BusOut seg(PA_0, PA_1, PA_4, PB_0, PB_4, PC_0, PC_1); // a,b,c,d,e,f,g 
+
+// ---- Global Variables ----
+int totalSlots = 7;    // Maximum parking slots
+int availableSlots = 7; // Starts full
+int prevIR1 = 0, prevIR2 = 0; // Used for detecting entry/exit sequence
+
+// ---- Hex Codes for 7-Segment (Common Anode) ----
+int segCode[10] = {0xC0, 0xF9, 0xA4, 0xB0, 0x99, 0x92, 0x82, 0xF8, 0x80, 0x90};
+
+// ---- Function to Display Number on 7-Segment ----
+void displayNumber(int num) {
+    seg = segCode[num];
+}
+
+// ---- Function to Control Servo Gate ----
+void openGate() {
+    servo.period_ms(20);           // Standard 50 Hz servo
+    servo.pulsewidth_us(1500);     // 90° position
+    wait(5);                       // Gate open for 5 seconds
+    servo.pulsewidth_us(500);      // Back to 0° (closed)
+}
+
+// ---- Main Program ----
+int main() {
+    servo.period_ms(20);
+    servo.pulsewidth_us(500);  // Initially gate closed
+    buzzer = 0;                // Buzzer off
+    displayNumber(availableSlots);
+
+    while(1) {
+        int IR1_state = IR1.read();
+        int IR2_state = IR2.read();
+
+        // ---- Vehicle Entry (IR1 → IR2) ----
+        if (IR1_state == 1 && prevIR1 == 0) { wait(0.2); prevIR1 = 1; }
+        if (IR2_state == 1 && prevIR1 == 1) {
+            // Vehicle entering
+            if (availableSlots > 0) {
+                openGate();
+                availableSlots--;
+                if (availableSlots < 0) availableSlots = 0;
+                displayNumber(availableSlots);
+            } else {
+                // Parking full
+                buzzer = 1;
+                wait(5);
+                buzzer = 0;
+            }
+            prevIR1 = 0;
+        }
+
+        // ---- Vehicle Exit (IR2 → IR1) ----
+        if (IR2_state == 1 && prevIR2 == 0) { wait(0.2); prevIR2 = 1; }
+        if (IR1_state == 1 && prevIR2 == 1) {
+            // Vehicle exiting
+            if (availableSlots < totalSlots) {
+                openGate();
+                availableSlots++;
+                if (availableSlots > totalSlots) availableSlots = totalSlots;
+                displayNumber(availableSlots);
+            }
+            prevIR2 = 0;
+        }
+
+        wait(0.1);
+    }
+}
+
+___________________________________________________________________________________________________________________________________________
+2.COUNTDOWN
+#include "mbed.h"
+#include "TextLCD.h"
+#include "keypad.h"
+DigitalOut buzz(PC_8);
+Keypad key(PA_10, PB_3, PB_5, PB_4, PB_10, PA_8, PA_9, PC_7);
+TextLCD lcd(PC_0, PC_1, PB_0, PA_4, PA_1, PA_0);
+int main(){
+    key.enablePullUp();
+    lcd.locate(0,0);
+    lcd.printf("Enter value");
+    while(1){
+        int a, b, c;
+        while(key.getKey()=='\0');
+        a = key.getKey();
+        while(key.getKey()=='\0');
+        b = key.getKey();
+        c= a*10 + b;5
+        lcd.locate(0,1);
+        lcd.printf("%c seconds",c);
+        for (int i = c; i>=0; i--){
+            c--;
+            lcd.locate(0,1);
+            lcd.printf("%c seconds",c);
+        }
+        if (c==0){
+            buzz=1;
+            wait(2);
+        }
+        else{
+            buzz=0;
+        }
+    }
+}
+
+__________________________________________________________________________________________________________________________________________________________________-
+3.SERVO LDR LCD 
+
+
+#include "mbed.h"
+#include "TextLCD.h"
+
+PwmOut servo(PC_8);                       // Servo Motor
+AnalogIn LDR_L(PA_0);                     // Left LDR
+AnalogIn LDR_R(PA_1);                     // Right LDR
+TextLCD lcd(PC_0, PC_1, PB_0, PB_4, PA_1, PA_0); // RS, E, D4, D5, D6, D7
+
+int main() {
+    float angle = 90;                     // Start position
+    servo.period_ms(20);                  // Servo frequency 50Hz
+
+    while(1) {
+        float left  = LDR_L.read();
+        float right = LDR_R.read();
+
+        if(left - right > 0.02) angle += 5;     // Move Left
+        else if(right - left > 0.02) angle -= 5; // Move Right
+
+        if(angle < 0) angle = 0;
+        if(angle > 180) angle = 180;
+
+        servo.pulsewidth_us(500 + angle * 2000 / 180); // Servo control
+
+        // Display LDR values and Servo angle
+        lcd.locate(0,0);
+        lcd.printf("L:%.2f R:%.2f", left, right);
+        lcd.locate(0,1);
+        lcd.printf("Angle:%3d", (int)angle);
+
+        wait(0.2);
+    }
+}
