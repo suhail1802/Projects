@@ -152,3 +152,94 @@ int main() {
         wait(0.2);
     }
 }
+
+_____________________________________________________________________________________________________________________________
+Restaurant Ordering System with SPI Kitchen Display
+
+#include "mbed.h"
+#include "keypad.h"
+#include "TextLCD.h"
+
+// Keypad + LCD + Bluetooth + SPI Integration
+Serial bt(PC_10, PC_11);  // Bluetooth: TX, RX
+TextLCD lcd(PC_0, PC_1, PB_0, PA_4, PA_1, PA_0); // RS, E, D4-D7
+Keypad kpad(PA_10, PB_3, PB_5, PB_4, PB_10, PA_8, PA_9, PC_7); // C1-C4, R1-R4
+SPI kitchenDisplay(PB_15, PB_14, PB_13); // MOSI, MISO, SCLK
+DigitalOut cs(PB_12); // Chip Select for SPI
+
+// Menu prices
+int menu_prices[4] = {300, 150, 200, 50}; // Pizza, Burger, Pasta, Coke
+
+int main() {
+    bt.baud(9600);
+    kitchenDisplay.format(8, 0); // 8-bit data, Mode 0
+    kitchenDisplay.frequency(1000000); // 1MHz SPI
+    cs = 1; // Start with CS high
+    
+    lcd.printf("RESTAURANT ORDER");
+    wait(2);
+    
+    while(1) {
+        int table_no = 0, item_code = 0, quantity = 0;
+        char input;
+        
+        // Get table number
+        lcd.cls();
+        lcd.printf("Table No: ");
+        while(!(input = kpad.getKey()));
+        table_no = input - '0';
+        lcd.printf("%d", table_no);
+        wait(1);
+        
+        // Get item code
+        lcd.cls();
+        lcd.printf("Item Code: ");
+        while(!(input = kpad.getKey()));
+        item_code = input - '0';
+        lcd.printf("%d", item_code);
+        wait(1);
+        
+        // Get quantity
+        lcd.cls();
+        lcd.printf("Quantity: ");
+        while(!(input = kpad.getKey()));
+        quantity = input - '0';
+        lcd.printf("%d", quantity);
+        wait(1);
+        
+        // Calculate total
+        int total = menu_prices[item_code-1] * quantity;
+        
+        // Display on LCD
+        lcd.cls();
+        lcd.printf("Total: Rs.%d", total);
+        
+        // Send to Smartphone via Bluetooth
+        bt.printf("=== ORDER RECEIVED ===\r\n");
+        bt.printf("Table: %d\r\n", table_no);
+        bt.printf("Item: %d\r\n", item_code);
+        bt.printf("Qty: %d\r\n", quantity);
+        bt.printf("Total: Rs.%d\r\n", total);
+        bt.printf("=====================\r\n");
+        
+        // Send to Kitchen Display via SPI
+        cs = 0; // Select kitchen display
+        kitchenDisplay.write(table_no); // Send table number
+        kitchenDisplay.write(item_code); // Send item code  
+        kitchenDisplay.write(quantity); // Send quantity
+        cs = 1; // Deselect
+        
+        lcd.cls();
+        lcd.printf("Order Sent!");
+        lcd.locate(0,1);
+        lcd.printf("Wait 5 sec...");
+        wait(5);
+        
+        lcd.cls();
+        lcd.printf("New Order?");
+        lcd.locate(0,1);
+        lcd.printf("Press any key");
+        while(!kpad.getKey()); // Wait for key press
+    }
+}
+__________________________________________________________________________________________________________________________
