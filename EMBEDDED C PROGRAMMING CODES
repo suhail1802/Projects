@@ -243,3 +243,160 @@ int main() {
     }
 }
 __________________________________________________________________________________________________________________________
+
+
+Seed sowing 
+We are given a problem to design a line follower seed sowing bot using an STM32 Nucleo board with the following components:
+
+LM35 temperature sensor
+
+Buzzer
+
+Two servo motors (one for sowing arm and one for pump)
+
+IR sensor (for line following)
+
+7-segment display (common anode)
+
+The bot should:
+
+Continuously monitor soil temperature using LM35.
+
+Sow a seed only if the soil temperature is below 25°C. If the temperature exceeds 25°C, activate the pump (by rotating the pump servo to 90°) for two minutes.
+
+The bot must follow a black field with white vertical lines. The IR sensor is used to check if the bot is on the path. If it deviates, trigger the buzzer.
+
+The sowing is done by rotating the sowing servo to 180° at two-second intervals.
+
+The 7-segment display should increment the count by one each time a seed is planted, and the maximum seed count is 9.
+#include "mbed.h"
+
+// Sensors & Actuators
+AnalogIn tempSensor(PC_3);          // LM35 Temperature
+DigitalIn irSensor(PC_8);           // IR Line Sensor
+DigitalOut buzzer(PC_10);           // Buzzer
+PwmOut sowingServo(PA_0);           // Seed sowing servo
+PwmOut pumpServo(PA_1);             // Water pump servo
+
+// 7-Segment Display Pins (Common Anode)
+DigitalOut segA(PB_0);
+DigitalOut segB(PB_1);
+DigitalOut segC(PB_2);
+DigitalOut segD(PB_3);
+DigitalOut segE(PB_4);
+DigitalOut segF(PB_5);
+DigitalOut segG(PB_6);
+
+// Global Variables
+int seedCount = 0;
+bool sowingEnabled = true;
+
+// 7-Segment Display Patterns (Common Anode - ACTIVE LOW)
+const bool digitPatterns[10][7] = {
+    {0,0,0,0,0,0,1}, // 0
+    {1,0,0,1,1,1,1}, // 1
+    {0,0,1,0,0,1,0}, // 2
+    {0,0,0,0,1,1,0}, // 3
+    {1,0,0,1,1,0,0}, // 4
+    {0,1,0,0,1,0,0}, // 5
+    {0,1,0,0,0,0,0}, // 6
+    {0,0,0,1,1,1,1}, // 7
+    {0,0,0,0,0,0,0}, // 8
+    {0,0,0,0,1,0,0}  // 9
+};
+
+// Function to update 7-segment display
+void updateDisplay(int number) {
+    if (number < 0 || number > 9) return;
+    
+    segA = digitPatterns[number][0];
+    segB = digitPatterns[number][1];
+    segC = digitPatterns[number][2];
+    segD = digitPatterns[number][3];
+    segE = digitPatterns[number][4];
+    segF = digitPatterns[number][5];
+    segG = digitPatterns[number][6];
+}
+
+// Function to control servo positions
+void setServoAngle(PwmOut &servo, float angle) {
+    // Convert angle (0-180) to PWM pulse width (0.001 to 0.002)
+    float pulseWidth = 0.001f + (angle / 180.0f) * 0.001f;
+    servo.pulsewidth(pulseWidth);
+}
+
+// Function to read temperature from LM35
+float readTemperature() {
+    // LM35: 10mV/°C, Vref = 3.3V
+    float voltage = tempSensor.read() * 3.3f;
+    float temperature = voltage * 100.0f; // 10mV/°C = 100°C/V
+    return temperature;
+}
+
+// Function to sow a seed
+void sowSeed() {
+    if (seedCount >= 9) {
+        sowingEnabled = false;
+        return;
+    }
+    
+    setServoAngle(sowingServo, 180.0f); // Move to sow position
+    wait(2.0);                          // Wait 2 seconds
+    setServoAngle(sowingServo, 0.0f);   // Return to rest position
+    
+    seedCount++;                        // Increment seed count
+    updateDisplay(seedCount);           // Update display
+}
+
+// Function to activate water pump
+void activatePump() {
+    setServoAngle(pumpServo, 90.0f);    // Activate pump
+    wait(120.0);                        // Run for 2 minutes
+    setServoAngle(pumpServo, 0.0f);     // Return to rest position
+}
+
+int main() {
+    // Initialize servo period (20ms = 50Hz)
+    sowingServo.period(0.02f);
+    pumpServo.period(0.02f);
+    
+    // Initialize servos to rest position
+    setServoAngle(sowingServo, 0.0f);
+    setServoAngle(pumpServo, 0.0f);
+    
+    // Initialize display
+    updateDisplay(0);
+    
+    while(1) {
+        // Read soil temperature
+        float temperature = readTemperature();
+        
+        // Check if temperature is too high
+        if (temperature > 25.0f) {
+            activatePump();
+            sowingEnabled = false; // Stop sowing while watering
+        } else {
+            sowingEnabled = true;  // Resume sowing
+        }
+        
+        // Check line following with IR sensor
+        // IR sensor gives 0 on black line, 1 on white deviation
+        if (irSensor.read() == 1) {
+            // Bot deviated from path
+            buzzer = 1; // Activate buzzer
+            sowingEnabled = false; // Stop sowing
+        } else {
+            // Bot on correct path
+            buzzer = 0; // Turn off buzzer
+            sowingEnabled = true; // Allow sowing
+        }
+        
+        // Sow seed if conditions are met
+        if (sowingEnabled && seedCount < 9) {
+            sowSeed();
+        }
+        
+        wait(0.1); // Small delay for stability
+    }
+}                          
+______________________________________________________________________________________________________________________________________
